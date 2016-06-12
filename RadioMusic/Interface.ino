@@ -5,32 +5,32 @@
 // A moving average of previous 5 values
 void checkInterface(){
 
-  int channel; 
-  unsigned long time; 
+  int channel;
+  unsigned long time;
   // This is set to true when chan changes and back to false
   // when reset is performed the next time.
   static boolean chanHasChanged = false;
   boolean buttonUp = false;
   boolean buttonDown = false;
 
-  // READ & AVERAGE POTS 
+  // READ & AVERAGE POTS
 
-  int chanPot = 0; 
-  int chanCV = 0; 
-  int timPot = 0; 
-  int timCV = 0; 
+  int chanPot = 0;
+  int chanCV = 0;
+  int timPot = 0;
+  int timCV = 0;
 
   for (int i = 0; i < SAMPLEAVERAGE; i++){
-    chanPot += analogRead(CHAN_POT_PIN); 
-    chanCV += analogRead(CHAN_CV_PIN); 
-    timPot += analogRead(TIME_POT_PIN); 
-    timCV += analogRead(TIME_CV_PIN); 
+    chanPot += analogRead(CHAN_POT_PIN);
+    chanCV += analogRead(CHAN_CV_PIN);
+    timPot += analogRead(TIME_POT_PIN);
+    timCV += analogRead(TIME_CV_PIN);
   }
 
-  chanPot = chanPot / SAMPLEAVERAGE; 
-  chanCV = chanCV / SAMPLEAVERAGE; 
-  timPot = timPot / SAMPLEAVERAGE; 
-  timCV = timCV / SAMPLEAVERAGE; 
+  chanPot = chanPot / SAMPLEAVERAGE;
+  chanCV = chanCV / SAMPLEAVERAGE;
+  timPot = timPot / SAMPLEAVERAGE;
+  timCV = timCV / SAMPLEAVERAGE;
 
   // Snap small values to zero.
   if (timPot <= timHyst)
@@ -38,34 +38,36 @@ void checkInterface(){
   if (timCV <= timHyst)
     timCV = 0;
 
-  // IDENTIFY POT / CV CHANGES 
+  // IDENTIFY POT / CV CHANGES
 
-  boolean chanPotChange = (abs(chanPot - chanPotOld) > chanHyst); 
+  boolean chanPotChange = (abs(chanPot - chanPotOld) > chanHyst);
   boolean chanCVChange = (abs(chanCV - chanCVOld) > chanHyst);
   boolean timPotChange = (abs(timPot - timPotOld) > timHyst);
-  boolean timCVChange = (abs(timCV - timCVOld) > timHyst); 
+  boolean timCVChange = (abs(timCV - timCVOld) > timHyst);
 
-  // MAP INPUTS TO CURRENT SITUATION 
+  // MAP INPUTS TO CURRENT SITUATION
 
-  channel = chanPot + chanCV; 
+  channel = chanCV;
+  int speed = constrain(chanPot, 0, 1023);
+  pRawPlayer->set_speed(speed / 32);
   channel = constrain(channel, 0, 1023);
-  channel = map(channel,0,1024,0,FILE_COUNT[PLAY_BANK]); // Highest pot value = 1 above what's possible (ie 1023+1) and file count is one above the number of the last file (zero indexed)  
+  channel = map(channel,0,1024,0,FILE_COUNT[PLAY_BANK]); // Highest pot value = 1 above what's possible (ie 1023+1) and file count is one above the number of the last file (zero indexed)
 
-  time = timPot + timCV;   
-  time = constrain(time, 0U, 1023U); 
-  time = (time / StartCVDivider) * StartCVDivider; // Quantizes start position 
+  time = timPot + timCV;
+  time = constrain(time, 0U, 1023U);
+  time = (time / StartCVDivider) * StartCVDivider; // Quantizes start position
   time  = time * (FILE_NAMES[PLAY_BANK][PLAY_CHANNEL].size / 1023);
 
-  // IDENTIFY AND DEPLOY RELEVANT CHANGES  
+  // IDENTIFY AND DEPLOY RELEVANT CHANGES
 
   if (channel != PLAY_CHANNEL && chanPotChange) {
-    NEXT_CHANNEL = channel; 
+    NEXT_CHANNEL = channel;
     CHAN_CHANGED = ChanPotImmediate;
     chanPotOld = chanPot;
   };
 
   if (channel != PLAY_CHANNEL && chanCVChange) {
-    NEXT_CHANNEL = channel; 
+    NEXT_CHANNEL = channel;
     CHAN_CHANGED = ChanCVImmediate;
     chanCVOld = chanCV;
   };
@@ -75,7 +77,7 @@ void checkInterface(){
   if (CHAN_CHANGED)
     chanHasChanged = true;
 
-  // time pot or cv changes may cause reset if 
+  // time pot or cv changes may cause reset if
   // enabled in settings.txt
   if (timPotChange){
     playhead = time;
@@ -89,7 +91,7 @@ void checkInterface(){
     timCVOld = timCV;
   }
 
-  // Reset Button & CV 
+  // Reset Button & CV
   if ( resetSwitch.update() ) {
     resetButton = resetSwitch.read();
 //    Serial.println(resetButton);
@@ -98,12 +100,12 @@ void checkInterface(){
   if (!resetButton && prevResetButton) {
     buttonUp = true;
   } else if (resetButton && !prevResetButton) {
-    buttonDown = true;	
+    buttonDown = true;
     bankTimer = 0;
   }
-  prevResetButton = resetButton;	
+  prevResetButton = resetButton;
 
-  if ((buttonDown || resetCVHigh) && !bankChangeMode) 
+  if ((buttonDown || resetCVHigh) && !bankChangeMode)
   {
     // We must set the playhead on reset if we previously have changed the channel.
     // But only once so that the further resets will guarantee to reset to the same spot again.
@@ -122,7 +124,7 @@ void checkInterface(){
   }
   resetCVHigh = false;
 
-  // Hold Reset Button to Change Bank 
+  // Hold Reset Button to Change Bank
 //  bankTimer = bankTimer * digitalRead(RESET_BUTTON);
 
   if (buttonUp) {
@@ -142,7 +144,7 @@ void checkInterface(){
       if (PLAY_BANK > ACTIVE_BANKS) PLAY_BANK = 0;
       if (NEXT_CHANNEL >= FILE_COUNT[PLAY_BANK]) NEXT_CHANNEL = FILE_COUNT[PLAY_BANK]-1;
       CHAN_CHANGED = true;
-      bankTimer = 0;  
+      bankTimer = 0;
       meterDisplay = 0;
       EEPROM.write(BANK_SAVE, PLAY_BANK);
     }

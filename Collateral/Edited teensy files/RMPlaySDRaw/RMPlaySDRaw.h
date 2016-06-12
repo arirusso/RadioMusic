@@ -36,6 +36,8 @@ class RMPlaySDRaw : public AudioStream
 public:
 	RMPlaySDRaw(void) : AudioStream(0, NULL) { begin(); }
 	void begin(void);
+  void fillBuffer(void);
+  void fillBlockFromBuffer(audio_block_t *block);
 	bool play(const char *filename);
 	bool playFrom(const char *filename, unsigned long start);
 	bool preparePlayFrom(const char *filename);
@@ -48,6 +50,10 @@ public:
 	virtual void update(void);
 
     	void (*hotswap_cb)();
+
+  // speed functions
+  void addFrame(int16_t *table, uint16_t at_index, int16_t frame, uint16_t length);
+  void set_speed(int8_t speed) { speed_ = speed; }
 private:
 	File rawfile;
 	uint32_t file_size;
@@ -57,6 +63,7 @@ private:
 	volatile int bufAvail = 0;
 	volatile int bufPos = 0;
 	char _filePath[16];
+  int8_t speed_ = 0;
 };
 
 #endif

@@ -33,6 +33,7 @@ void RMPlaySDRaw::begin(void)
 	file_offset = 0;
 	file_size = 0;
 	_filePath[0] = 0;
+  speed_ = 0;
 }
 
 
@@ -111,7 +112,7 @@ void RMPlaySDRaw::pause(void) {
     if (playing) {
 	playing = false;
 //	AudioStopUsingSPI();
-    } 
+    }
     __enable_irq();
 }
 
@@ -129,51 +130,96 @@ void RMPlaySDRaw::stop(void)
     }
 }
 
+void RMPlaySDRaw::addFrame(int16_t *table, uint16_t at_index, int16_t frame, uint16_t length) {
+    int i = length - 1;
+    for (; i > 0 && i >= at_index; --i)
+    {
+        table[i] = table[i-1];
+    }
+    table[i] = frame;
+}
 
-void RMPlaySDRaw::update(void)
-{
-    unsigned int i;
-    int n;
-    audio_block_t *block;
+void RMPlaySDRaw::fillBuffer() {
+  // we can read more data from the file...
+  if (bufAvail == 0) {
+    bufAvail = rawfile.read(audioBuffer, AUDIOBUFSIZE);
+    bufPos = 0;
+    if (bufAvail < 0) {
+      if (hotswap_cb) {
+        hotswap_cb();
+      }
+      return;
+    }
+  }
+}
 
-    // only update if we're playing
-    if (!playing) return;
-
-    // allocate the audio blocks to transmit
-    block = allocate();
-    if (block == NULL) 
-	return;
-
-    if (rawfile.available()) {
-	// we can read more data from the file...
-	if (bufAvail == 0) {
-	    bufAvail = rawfile.read(audioBuffer, AUDIOBUFSIZE);
-	    bufPos = 0;
-	    if (bufAvail < 0) {
-		if (hotswap_cb)
-		    hotswap_cb();
-		return;
-	    }
-	}
-	n = min(AUDIO_BLOCK_SAMPLES * 2, bufAvail);
-	memcpy(block->data, &(audioBuffer[bufPos]), n);
-	bufAvail -= n;
+void RMPlaySDRaw::fillBlockFromBuffer(audio_block_t *block) {
+  int n = min(AUDIO_BLOCK_SAMPLES * 2, bufAvail);
+  memcpy(block->data, &(audioBuffer[bufPos]), n);
+  bufAvail -= n;
 	bufPos += n;
-	// ADD THIS SECTION TO ENABLE HOT SWAPPING 
+	// ADD THIS SECTION TO ENABLE HOT SWAPPING
 	// read returns -1 on error.
 	// END OF NEW HOT SWAP SECTION
 
 	file_offset += n;
-	for (i=n/2; i < AUDIO_BLOCK_SAMPLES; i++) {
-	    block->data[i] = 0;
+	for (uint16_t i = n/2; i < AUDIO_BLOCK_SAMPLES; i++) {
+	  block->data[i] = 0;
 	}
-	transmit(block);
-    } else {
-//	rawfile.close();
-//	AudioStopUsingSPI();
-	playing = false;
+}
+
+void RMPlaySDRaw::update(void)
+{
+  uint16_t i;
+  audio_block_t *block;
+  int16_t data[AUDIO_BLOCK_SAMPLES * 2];
+
+  // only update if we're playing
+  if (!playing) return;
+
+  // allocate the audio blocks to transmit
+  block = allocate();
+
+  if (block == NULL) {
+	  return;
+  }
+
+  if (rawfile.available()) {
+	  fillBuffer();
+    fillBlockFromBuffer(block);
+
+    memcpy(data, &(block->data), AUDIO_BLOCK_SAMPLES);
+
+    uint8_t factor = speed_;
+    if (factor < 2) {
+      factor = 2;
     }
-    release(block);
+    uint16_t factored_size = AUDIO_BLOCK_SAMPLES + (AUDIO_BLOCK_SAMPLES / factor);
+
+    // perform speed processing
+    for (i = 0; i < factored_size; ++i) {
+      if (i % factor == 0) {
+        addFrame(data, i, data[i-1], factored_size);
+      }
+    }
+
+    memcpy(block->data, &(data), AUDIO_BLOCK_SAMPLES);
+
+    transmit(block);
+
+    // transmit the overflow
+    uint16_t counter = 0;
+    for (i = AUDIO_BLOCK_SAMPLES; i < factored_size; ++i) {
+      block->data[counter] = data[i];
+      ++counter;
+    }
+
+    transmit(block);
+
+  } else {
+    playing = false;
+  }
+  release(block);
 }
 
 #define B2M (uint32_t)((double)4294967296000.0 / AUDIO_SAMPLE_RATE_EXACT / 2.0) // 97352592
@@ -192,4 +238,3 @@ uint32_t RMPlaySDRaw::fileOffset(void)
 {
 	return file_offset;
 }
-
